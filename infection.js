@@ -1,39 +1,40 @@
-let peeps = [];
+let peeps = [];        // people array
 let quarantines = [];
 
-var infected_count;
-var immune_count;
-var healthy_count;
+// not really using these vars anymore...
+var infected_count = [];
+var immune_count = [];
+var healthy_count = [];
 
-var cycle;
+// keep track of time
+var cycle = 0;
 
+// boundaries the peeps will bounce off of
 var boundary_height;
 var boundary_width;
 
-var population;
+var population = 200;
 var testing_rate = 0.3;
-var infection_duration;
-var immune_duration;
-
-var base_gdp;
+var infection_duration = 500; // peeps remain infected for 500 cycles
+var immune_duration = 500000000; // peeps remain immune basically forever
 
 var score = [];
 
-let quarantine_radius = 100;
+let quarantine_radius = 100; // default size for quarantines
 
+// gdp currently calculated via collisions.
+// when two healthy peeps collide outside quarantine, that adds to gdp
+// if peeps are inside quarantine or not healthy, they don't count towards gdp
+// (also if they're "recovered" they don't count towards gdp... probably need to
+// refigure that...
 var gdp = 0;
+var healthy_gdp;
 
 function setup() {
   createCanvas(900, 600);
   boundary_width = width;
   boundary_height = height - 100;
-  population = 200;
-  infection_duration = 500;
-  immune_duration = 500000000;
-  healthy_count = [];
-  infected_count = [];
-  immune_count = [];
-  cycle = 0;
+  // instantiate new peeps
   for(var i=0;i<population;i++) {
     peeps.push(new peep(i));
   } 
@@ -50,6 +51,8 @@ function draw() {
     peep.update();
     peep.display();
     peep.check_boundary_collision();
+    
+    // update status counts
     if (peep.infected > 0) { infected += 1; }
     if (peep.infected < 0) { immune += 1; }
     if (peep.infected == 0) { healthy += 1; }
@@ -65,14 +68,15 @@ function draw() {
     quarantine.display();
   }
   
-  let sc = gdp / (cycle + 1);
   
+  // this code is all for displaying scores at bottom
+  // very tentative
+  let sc = gdp / (cycle + 1);
   if (cycle % 9 == 0) {
     fill(0);
     stroke(0);
     score.push(sc);       
-    while (score.length > 200) { score.shift(); }  
-    
+    while (score.length > 200) { score.shift(); }      
     infected_count.push(infected);
     while (infected_count.length > 200) { infected_count.shift(); }
     
@@ -95,21 +99,24 @@ function draw() {
     rect(i + 300, height - scaled_infected, 1, scaled_infected);
   }    
 
+  // infect patient 0 when we hit 100 cycles.
+  // store healthy GDP so we can measure decline
   if (cycle == 100) {
-    base_gdp = sc;
+    healthy_gdp = sc;
     peeps[0].infected = 1;
   }
   
   if (cycle > 100) {
     fill(0);
     stroke(0);    
-    text(round(100 * (sc / base_gdp - 1)) + "%", 220, boundary_height + 75);    
+    text(round(100 * (sc / healthy_gdp - 1)) + "%", 220, boundary_height + 75);    
   }
 
   if (infected == 0 && cycle > 100) {
     noLoop();
   }
   
+// earlier code for displaying other information about population health...
 
 //  if (cycle % 3 == 0) {
 //    infected_count.push(infected);
@@ -138,22 +145,27 @@ function draw() {
   
   stroke(125, 125, 125);
   noFill();
+  
+  // need to turn this off when quarantine can't be drawn
   ellipse(mouseX, mouseY, quarantine_radius * 2, quarantine_radius * 2);
   
   cycle++;
 }
 
+
+// person object
 function peep(my_id) {
   this.id = my_id;
   this.radius = 8.0;
   this.m = this.radius * 0.1;
   this.infected = 0;
-  this.gdp_value = 1;
+  this.gdp_value = 1; // how much they contribute to the economy when healthy
   
-  let retry = true;
   this.vel = p5.Vector.random2D();
   this.vel.mult(1);
-  
+
+  // position the peeps and make sure their starting position doesn't overlap
+  let retry = true;  
   while (retry) {
     retry = false;
     this.pos = createVector(random(10, boundary_width - 10), random(10, boundary_height - 10));
@@ -168,6 +180,7 @@ function peep(my_id) {
       }        
     }
   }
+  
   
   this.display = function() {
     noStroke();
@@ -205,7 +218,7 @@ function peep(my_id) {
   };
 
   this.check_boundary_collision = function() {
-    // first, check the walls:
+    // check the walls:
     if (this.pos.x > boundary_width-this.radius) {
       this.pos.x = boundary_width-this.radius;
       this.vel.x *= -1;
@@ -222,7 +235,7 @@ function peep(my_id) {
   };
   
   this.check_quarantine_collision = function() {
-    // now, check the user-drawn boundaries:
+    // check the user-drawn boundaries:
     for (let q of quarantines) {      
       let d = p5.Vector.sub(this.pos, q.center).mag();
       if (d < q.radius) {
@@ -238,6 +251,7 @@ function peep(my_id) {
         this.pos.add(this.vel);        
       } 
       
+      // another way to handle this -- or maybe another feature (lockdown?):
       // if the peep is inside the quarantine, freeze 'em
       //if (d < q.radius - this.radius) {
       //  this.vel.mult(0);
