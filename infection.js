@@ -14,8 +14,8 @@ var boundary_height;
 var boundary_width;
 
 var population;
-var testing_rate = 0.3;
-var infection_duration = 500; // peeps remain infected for 500 cycles
+var testing_speed;
+var infection_duration; // peeps remain infected for this many cycles
 var immune_duration = 500000000; // peeps remain immune basically forever
 
 var score = [];
@@ -31,9 +31,10 @@ var gdp = 0;
 var healthy_gdp;
 
 function setup() {
-  let params = getURLParams();
-  population = params.population;
-  if (isNaN(population)) { population = 200; }
+  // let params = getURLParams();
+  population = get_parameter("population", 300, true);
+  infection_duration = get_parameter("infection_duration", 500, true);
+  testing_speed = get_parameter("testing_speed", 0.3, true);  
   createCanvas(900, 600);
   boundary_width = width;
   boundary_height = height - 100; // space on the bottom for scores and graphs
@@ -41,6 +42,16 @@ function setup() {
   for(var i=0;i<population;i++) {
     peeps.push(new peep(i));
   } 
+}
+
+function get_parameter(parameter_name, default_value, set_input) {
+  let params = getURLParams();
+  value = params[parameter_name];
+  if (isNaN(value)) { value = default_value; }
+  if (set_input) {
+    document.getElementById(parameter_name).value = value;
+  }
+  return value;
 }
 
 
@@ -143,33 +154,35 @@ function draw() {
 //    rect(i, height - inf_count - health_count - imm_count, 1, imm_count);
 //  }
   
-  stroke(125, 125, 125);
-  noFill();
-  let no_preview = false;
-  // need to turn this off when quarantine can't be drawn
-  for (let q of quarantines) {
-    distance = p5.Vector.sub(new p5.Vector(mouseX, mouseY), q.center).mag();
-    if (distance <= quarantine_radius + q.radius + 5) {
-      no_preview = true;
+  if (mouseY >= 0) {
+    stroke(125, 125, 125);
+    noFill();
+    let no_preview = false;
+    // need to turn this off when quarantine can't be drawn
+    for (let q of quarantines) {
+      distance = p5.Vector.sub(new p5.Vector(mouseX, mouseY), q.center).mag();
+      if (distance <= quarantine_radius + q.radius + 5) {
+        no_preview = true;
+      }
     }
+    if (!no_preview) {
+      stroke(204, 204, 0);
+      strokeWeight(5);
+    } else {
+      stroke(200, 200, 200);
+      strokeWeight(2);
+    }
+    ellipse(mouseX, mouseY, quarantine_radius * 2, quarantine_radius * 2);
+    if (!no_preview) {
+      stroke(0);
+      strokeWeight(1);
+    } else {
+      stroke(255, 0, 0);
+      strokeWeight(1);
+    }
+    ellipse(mouseX, mouseY, quarantine_radius * 2, quarantine_radius * 2);        
   }
-  if (!no_preview) {
-    stroke(204, 204, 0);
-    strokeWeight(5);
-  } else {
-    stroke(200, 200, 200);
-    strokeWeight(2);
-  }
-  ellipse(mouseX, mouseY, quarantine_radius * 2, quarantine_radius * 2);
-  if (!no_preview) {
-    stroke(0);
-    strokeWeight(1);
-  } else {
-    stroke(255, 0, 0);
-    strokeWeight(1);
-  }
-  ellipse(mouseX, mouseY, quarantine_radius * 2, quarantine_radius * 2);
-  
+
   cycle++;
 }
 
@@ -208,9 +221,9 @@ function peep(my_id) {
     fill(204);
     if (this.infected < 0) { fill(0, 100, 255); }
     if (this.infected > 0) {
-      let r = 204 + testing_rate * this.infected/(255.0/(255-204));
-      let g = 204 - testing_rate * this.infected/(255.0/204);
-      let b = 204 - testing_rate * this.infected/(255.0/204);
+      let r = 204 + testing_speed * this.infected/(255.0/(255-204));
+      let g = 204 - testing_speed * this.infected/(255.0/204);
+      let b = 204 - testing_speed * this.infected/(255.0/204);
       if (r > 255) { r = 255; }
       if (g < 0) { g = 0; }
       if (b < 0) { b = 0; }
@@ -348,6 +361,7 @@ function mouseWheel(event) {
 }
 
 function mouseClicked() {
+  if (mouseY < 0) { return; }
   for (let q of quarantines) {
     let max_radius = q.radius + quarantine_radius;
     if (p5.Vector.sub(new p5.Vector(mouseX, mouseY), q.center).mag() <= max_radius + 5) {
