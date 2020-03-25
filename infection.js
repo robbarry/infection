@@ -8,6 +8,7 @@ var healthy_count = [];
 
 // keep track of time
 var cycle = 0;
+var cycles_per_day = 37;
 
 // boundaries the peeps will bounce off of
 var boundary_height;
@@ -33,7 +34,7 @@ var healthy_gdp;
 function setup() {
   // let params = getURLParams();
   population = get_parameter("population", 300, true);
-  infection_duration = get_parameter("infection_duration", 500, true);
+  infection_duration = get_parameter("infection_duration", 14, true) * (500 / 14);
   testing_speed = get_parameter("testing_speed", 0.3, true);  
   createCanvas(900, 600);
   boundary_width = width;
@@ -105,12 +106,14 @@ function draw() {
 
   // infect patient 0 when we hit 100 cycles.
   // store healthy GDP so we can measure decline
-  if (cycle == 100) {
+  if (cycle == cycles_per_day) {
     healthy_gdp = sc;
     peeps[0].infected = 1;
   }
+
+  document.getElementById("results").innerHTML = "Day #" + round(cycle / cycles_per_day);
   
-  if (cycle > 100) {
+  if (cycle > cycles_per_day) {
     for(var i = 0; i < score.length; i++) {
       stroke(100, 255, 100);
       fill(100, 255, 100);
@@ -123,7 +126,7 @@ function draw() {
     text(round(100 * (sc / healthy_gdp - 1)) + "%", 220, boundary_height + 75);    
   }
 
-  if (infected == 0 && cycle > 100) {
+  if (infected == 0 && cycle > cycles_per_day) {    
     noLoop();
   }
   

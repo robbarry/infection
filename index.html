@@ -11,6 +11,9 @@
   <!-- This line removes any default padding and style.
        You might only need one of these values set. -->
   <!-- <style> body { padding: 0; margin: 0; } </style> -->
+  <style>
+    #results { padding:5px; }
+  </style>
 </head>
 
 <body>
@@ -20,6 +23,7 @@
         <th>Pop</th>
         <th>Infection<br>duration</th>
         <th>Testing<br>speed</th>
+        <td rowspan=3><div id="results"></div></td>
       </tr>
       <tr>
         <td><input id="population" name="population" size=8 /></td>
