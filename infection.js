@@ -13,7 +13,7 @@ var cycle = 0;
 var boundary_height;
 var boundary_width;
 
-var population = 200;
+var population;
 var testing_rate = 0.3;
 var infection_duration = 500; // peeps remain infected for 500 cycles
 var immune_duration = 500000000; // peeps remain immune basically forever
@@ -31,9 +31,12 @@ var gdp = 0;
 var healthy_gdp;
 
 function setup() {
+  let params = getURLParams();
+  population = params.population;
+  if (isNaN(population)) { population = 200; }
   createCanvas(900, 600);
   boundary_width = width;
-  boundary_height = height - 100;
+  boundary_height = height - 100; // space on the bottom for scores and graphs
   // instantiate new peeps
   for(var i=0;i<population;i++) {
     peeps.push(new peep(i));
@@ -82,16 +85,6 @@ function draw() {
     
   }
   
-  for(var i = 0; i < score.length; i++) {
-    stroke(100, 255, 100);
-    fill(100, 255, 100);
-    let scaled_score = score[i] * 10;
-    rect(i, height - scaled_score, 1, scaled_score);
-  } 
-  fill(0);
-  stroke(0);
-  text(round(sc * 1000), 220, boundary_height + 50);
-
   for(i = 0; i < infected_count.length; i++) {
     stroke(200, 0, 0);
     fill(200, 0, 0);    
@@ -107,8 +100,15 @@ function draw() {
   }
   
   if (cycle > 100) {
+    for(var i = 0; i < score.length; i++) {
+      stroke(100, 255, 100);
+      fill(100, 255, 100);
+      let scaled_score = score[i] * 90 / healthy_gdp;
+      rect(i, height - scaled_score, 1, scaled_score);
+    } 
     fill(0);
-    stroke(0);    
+    stroke(0);
+    text(round(sc * 1000), 220, boundary_height + 50);
     text(round(100 * (sc / healthy_gdp - 1)) + "%", 220, boundary_height + 75);    
   }
 
@@ -145,8 +145,29 @@ function draw() {
   
   stroke(125, 125, 125);
   noFill();
-  
+  let no_preview = false;
   // need to turn this off when quarantine can't be drawn
+  for (let q of quarantines) {
+    distance = p5.Vector.sub(new p5.Vector(mouseX, mouseY), q.center).mag();
+    if (distance <= quarantine_radius + q.radius + 5) {
+      no_preview = true;
+    }
+  }
+  if (!no_preview) {
+    stroke(204, 204, 0);
+    strokeWeight(5);
+  } else {
+    stroke(200, 200, 200);
+    strokeWeight(2);
+  }
+  ellipse(mouseX, mouseY, quarantine_radius * 2, quarantine_radius * 2);
+  if (!no_preview) {
+    stroke(0);
+    strokeWeight(1);
+  } else {
+    stroke(255, 0, 0);
+    strokeWeight(1);
+  }
   ellipse(mouseX, mouseY, quarantine_radius * 2, quarantine_radius * 2);
   
   cycle++;
