@@ -36,7 +36,7 @@ function setup() {
   population = get_parameter("population", 300, true);
   infection_duration = get_parameter("infection_duration", 14, true) * (500 / 14);
   testing_speed = get_parameter("testing_speed", 0.3, true);  
-  createCanvas(900, 600);
+  createCanvas(900, 500);
   boundary_width = width;
   boundary_height = height - 100; // space on the bottom for scores and graphs
   // instantiate new peeps
