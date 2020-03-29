@@ -1,8 +1,8 @@
 let cities = [];
-let city_count = 25;
-let minimum_city_spacing = 25; // minimum distance between cities
+let city_count = 20;
+let minimum_city_spacing = 40; // minimum distance between cities
 let minimum_city_pop = 20;
-let maximum_city_pop = 100;
+let maximum_city_pop = 200;
 let cycle = 0;
 let cycles_per_day = 40;
 let total_pop = 0;
@@ -13,9 +13,13 @@ let person_scale = 6;
 
 // infection parameters
 let infection_distance = 8; // how far apart can dots infect each other
-let r0 = 3; // how many dots will each dot infect?
+let r0 = 2; // how many dots will each dot infect?
+let lockdown_r0 = 1.5;
 let infection_duration = cycles_per_day * 14; // how many cycles do dots stay infected
-let initial_infection_count = 20;
+let initial_infection_count = 3;
+let interactions = 0;
+let interactions_per_turn;
+let odds_of_infection;
 
 // movement parameters
 let travel_prob = 0.0003; // what is the rate of travel
@@ -23,7 +27,7 @@ let travel_speed = 4;
 let non_travel_speed = 0.2;
 let max_non_travel_speed = 0.2; // how fast do dots move inside cities
 let travel_prefer_local = 5; // higher number means more local travel
-let quarantine_capture_rate = 6; // the probability that an infected person will be quarantined
+let quarantine_capture_rate = 1; // the probability that an infected person will be quarantined
 let lockdown_adjustment = 0.25; // reduce travel to this % during lockdown
 
 // panic parameters
@@ -133,6 +137,12 @@ function draw() {
 	stroke(0, 0, 0, 0);
 	fill(0);
 	text("Day #" + daynum, display_graph_x + 10, 20);
+	interactions_per_turn = interactions / (cycle * total_infected);
+	let my_r0 = r0;
+	if (nationwide_lockdown) my_r0 = lockdown_r0;
+	odds_of_infection = (interactions_per_turn * my_r0) / (infection_duration);							
+	console.log(odds_of_infection);
+
 }
 
 // class for city
@@ -164,12 +174,14 @@ function city(id, pop) {
 			if (city.id != this.id) {
 				if (p5.Vector.sub(this.pos, city.pos).mag() < this.radius + city.radius + minimum_city_spacing) {
 					reposition = true;
+					efforts++;
+					if (efforts > 20) {
+						minimum_city_spacing = minimum_city_spacing - 1;
+					}
 					break;
 				}
 			}
 		}
-		efforts++;
-		if (efforts > 10) minimum_city_spacing = minimum_city_spacing - 1;
 	}
 
 	for(let i=0; i<this.pop; i++) { this.populace.push(new person(i, this)); } // populate our city
@@ -255,7 +267,7 @@ function city(id, pop) {
 				}
 				let new_city = -1;
 				if (nationwide_quarantine && p.infected > 0) {
-					if (cities[this.id] != 0) {
+					if (this.id > 0) {
 						if (Math.random() < quarantine_capture_rate / infection_duration) {
 							my_travel_prob = 1;												
 							new_city = 0;
@@ -359,8 +371,11 @@ function person(id, city) {
 			for (let p of this.city.populace) {
 				if (p.id != this.id) {
 					if (p5.Vector.sub(this.pos, p.pos).mag() < infection_distance) {
-						if (Math.random() < r0 / infection_duration) { 
-							if (p.infected == 0) { p.infected = 1; }
+						if (p.infected == 0) { interactions++; }
+						if (cycle >= 5) {														
+							if (Math.random() < odds_of_infection) { 
+								if (p.infected == 0) { p.infected = 1; }
+							}						
 						}
 					}
 				}
