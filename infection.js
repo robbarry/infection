@@ -2,9 +2,9 @@ let peeps = [];        // people array
 let quarantines = [];
 
 // not really using these vars anymore...
-var infected_count = [];
-var immune_count = [];
-var healthy_count = [];
+let infected_count = [];
+let immune_count = [];
+let healthy_count = [];
 
 // keep track of time
 var cycle = 0;
@@ -17,28 +17,37 @@ var boundary_width;
 var population;
 var testing_speed;
 var infection_duration; // peeps remain infected for this many cycles
-var immune_duration = 500000000; // peeps remain immune basically forever
+let immune_duration; // peeps remain immune for this many cycles
+let initial_infections;
 
 var score = [];
 
 let quarantine_radius = 100; // default size for quarantines
 
-// gdp currently calculated via collisions.
-// when two healthy peeps collide outside quarantine, that adds to gdp
-// if peeps are inside quarantine or not healthy, they don't count towards gdp
-// (also if they're "recovered" they don't count towards gdp... probably need to
-// refigure that...
-var gdp = 0;
-var healthy_gdp;
+let r0;
+
+let interactions = 0;
+let interactions_per_turn = 0;
+let odds_of_infection = 0;
+
+let box_x = 25;
+let box_y;
+let box_width = 550;
+let box_height = 95;
 
 function setup() {
   // let params = getURLParams();
-  population = get_parameter("population", 300, true);
+  population = get_parameter("population", 500, true);  
   infection_duration = get_parameter("infection_duration", 14, true) * (500 / 14);
-  testing_speed = get_parameter("testing_speed", 0.3, true);  
-  createCanvas(900, 500);
+  immune_duration = round(get_parameter("immune_duration", 60, true) * (500 / 14));
+  r0 = get_parameter("r0", 2.7, true);
+  testing_speed = get_parameter("testing_speed", 10, true);  
+  peep_speed = get_parameter("peep_speed", 0.35, true);
+  initial_infections = get_parameter("initial_infections", 1, true);
+  createCanvas(900, 600);
+  box_y = height;
   boundary_width = width;
-  boundary_height = height - 100; // space on the bottom for scores and graphs
+  boundary_height = height - (box_height + 5); // space on the bottom for scores and graphs
   // instantiate new peeps
   for(var i=0;i<population;i++) {
     peeps.push(new peep(i));
@@ -61,12 +70,13 @@ function draw() {
   let infected = 0;
   let immune = 0;
   let healthy = 0;
+  let population_out_of_quarantine = 0;
   for (let peep of peeps) {
     peep.check_quarantine_collision();
     peep.update();
     peep.display();
     peep.check_boundary_collision();
-    
+    if (!peep.in_quarantine) population_out_of_quarantine++;
     // update status counts
     if (peep.infected > 0) { infected += 1; }
     if (peep.infected < 0) { immune += 1; }
@@ -83,32 +93,38 @@ function draw() {
     quarantine.display();
   }
   
-  
-  // this code is all for displaying scores at bottom
-  // very tentative
-  let sc = gdp / (cycle + 1);
   if (cycle % 9 == 0) {
-    fill(0);
-    stroke(0);
-    score.push(sc);       
-    while (score.length > 200) { score.shift(); }      
     infected_count.push(infected);
-    while (infected_count.length > 200) { infected_count.shift(); }
-    
+    immune_count.push(immune);
+    healthy_count.push(healthy);
+    while (infected_count.length > box_width) { 
+      infected_count.shift(); 
+      immune_count.shift();
+      healthy_count.shift();
+    } 
   }
-  
+  stroke(100);
+  fill(250, 250, 250);
+  rect(box_x - 1, box_y, box_width + 1, -(box_height + 1));
   for(i = 0; i < infected_count.length; i++) {
+    let scaled_infected = infected_count[i] / population * box_height;    
+    let scaled_immune = immune_count[i] / population * box_height;
+    let scaled_healthy = healthy_count[i] / population * box_height;    
     stroke(200, 0, 0);
     fill(200, 0, 0);    
-    let scaled_infected = infected_count[i] / population * 100;
-    rect(i + 300, height - scaled_infected, 1, scaled_infected);
+    line(i + box_x, box_y - scaled_infected, i + box_x, box_y);
+    stroke(10, 150, 100, 150);
+    fill(10, 150, 100, 150);
+    line(i + box_x, (box_y - scaled_infected) - scaled_healthy, i + box_x, box_y - scaled_infected);
+    stroke(204);
+    fill(204);
+    line(i + box_x, (box_y - scaled_infected - scaled_healthy) - scaled_immune, i + box_x, (box_y - scaled_infected - scaled_healthy));
   }    
 
   // infect patient 0 when we hit 100 cycles.
-  // store healthy GDP so we can measure decline
   if (cycle == cycles_per_day) {
-    healthy_gdp = sc;
-    peeps[0].infected = 1;
+    for(let i = 0; i < initial_infections; i++) { peeps[i].infected = 1;}
+    
   }
 
   document.getElementById("results").innerHTML = "Day #" + round(cycle / cycles_per_day);
@@ -122,8 +138,6 @@ function draw() {
     } 
     fill(0);
     stroke(0);
-    text(round(sc * 1000), 220, boundary_height + 50);
-    text(round(100 * (sc / healthy_gdp - 1)) + "%", 220, boundary_height + 75);    
   }
 
   if (infected == 0 && cycle > cycles_per_day) {    
@@ -187,6 +201,9 @@ function draw() {
   }
 
   cycle++;
+  interactions_per_turn = interactions/(cycle * population_out_of_quarantine);
+  odds_of_infection = (r0) / (infection_duration * interactions_per_turn);
+  
 }
 
 
@@ -197,8 +214,11 @@ function peep(my_id) {
   this.m = this.radius * 0.1;
   this.infected = 0;
   this.gdp_value = 1; // how much they contribute to the economy when healthy
+  this.infected_others = 0;
+  this.in_quarantine = false;
   
   this.vel = p5.Vector.random2D();
+  this.vel.mult(peep_speed);
   this.vel.mult(1);
 
   // position the peeps and make sure their starting position doesn't overlap
@@ -221,29 +241,33 @@ function peep(my_id) {
   
   this.display = function() {
     noStroke();
-    fill(204);
-    if (this.infected < 0) { fill(0, 100, 255); }
+    if (this.in_quarantine) {
+      stroke(100);
+    }
+    fill(10, 150, 100, 150);
+    
+    if (this.infected < 0) { fill(204); }
+
     if (this.infected > 0) {
-      let r = 204 + testing_speed * this.infected/(255.0/(255-204));
-      let g = 204 - testing_speed * this.infected/(255.0/204);
-      let b = 204 - testing_speed * this.infected/(255.0/204);
+      let r = 10 + testing_speed * this.infected/(255.0/(255-10));
+      let g = 150 - testing_speed * this.infected/(255.0/150);
+      let b = 100 - testing_speed * this.infected/(255.0/100);
+      let a = 150 + testing_speed * this.infected/(255.0/(255-150));
       if (r > 255) { r = 255; }
       if (g < 0) { g = 0; }
       if (b < 0) { b = 0; }
-      fill(r, g, b);
+      if (a > 255) { a = 255; }      
+      fill(r, g, b, a);
     }
     
     ellipse(this.pos.x, this.pos.y, this.radius * 2, this.radius * 2);
   };
   
   this.update = function() {
-    if (this.vel.mag() > 1.5) { this.vel.mult(0.9); }
-    if (this.vel.mag() < 0.1) { this.vel.mult(1.1); }
+    if (this.vel.mag() > peep_speed * 1.5) { this.vel.mult(0.8); }
+    if (this.vel.mag() < peep_speed * 0.1) { this.vel.mult(1.1); }
     this.pos.add(this.vel);    
     
-    if (this.infected > 0) {
-      this.gdp_value = 0;
-    }
     if (this.infected != 0) {
       this.infected++;
     }
@@ -273,11 +297,10 @@ function peep(my_id) {
   
   this.check_quarantine_collision = function() {
     // check the user-drawn boundaries:
+    this.in_quarantine = false;
     for (let q of quarantines) {      
       let d = p5.Vector.sub(this.pos, q.center).mag();
-      if (d < q.radius) {
-        this.gdp_value = 0;
-      }
+      if (d <= q.radius) { this.in_quarantine = true; }
       if (d >= q.radius - this.radius - 4 && d <= q.radius + this.radius + 4) {
         let baseDelta = p5.Vector.sub(q.center, this.pos);
         baseDelta.normalize();
@@ -324,14 +347,20 @@ function peep(my_id) {
       this.vel.y -= ay;
       other.vel.x += ax;
       other.vel.y += ay;
-      gdp = gdp + this.gdp_value + other.gdp_value;      
+      if (!this.in_quarantine) { interactions++; }
+      
       this.infect(other);
     }    
   };
   
-  this.infect = function(other) {
-    if (this.infected > 0 && other.infected == 0) {
-      other.infected = 1;
+  this.infect = function(other) {    
+    if (this.infected > 0 && other.infected == 0) {      
+      // if (this.infected_others < this.will_infect) {
+      if (Math.random() < odds_of_infection) {          
+        other.infected = 1; 
+        this.infected_others++;
+      }
+      // }      
     } else if (other.infected > 0 && this.infected == 0) {
       other.infect(this);
     }    
@@ -358,29 +387,54 @@ function quarantine(cx, cy, r) {
 
 function mouseWheel(event) {
   quarantine_radius += event.delta;
-  if (quarantine_radius < 10) { quarantine_radius = 10; }
+  if (quarantine_radius < 50) { quarantine_radius = 50; }
   if (quarantine_radius > 400) { quarantine_radius = 400; }
   console.log(event.delta);
 }
 
-function mouseClicked() {
+function mouseClicked(evt) {  
   if (mouseY < 0) { return; }
-  for (let q of quarantines) {
-    let max_radius = q.radius + quarantine_radius;
-    if (p5.Vector.sub(new p5.Vector(mouseX, mouseY), q.center).mag() <= max_radius + 5) {
-      return false;
+  if (evt.shiftKey) {
+    for (let i = 0; i < quarantines.length; i++) {
+      q = quarantines[i];
+      let max_radius = q.radius + quarantine_radius;
+      if (p5.Vector.sub(new p5.Vector(mouseX, mouseY), q.center).mag() <= max_radius / 2) {
+        quarantines.splice(i, 1);
+      }    
+    }
+
+  } else {    
+    for (let q of quarantines) {
+      let max_radius = q.radius + quarantine_radius;
+      if (p5.Vector.sub(new p5.Vector(mouseX, mouseY), q.center).mag() <= max_radius + 5) {
+        return false;
+      }    
+    }
+    let q = new quarantine(mouseX, mouseY, quarantine_radius);
+    quarantines.push(q); 
+    for (let peep of peeps) {
+      let d = p5.Vector.sub(peep.pos, q.center).mag();
+      if ((d > q.radius - peep.radius - 4) && (d < q.radius + peep.radius + 4)) {
+        let base = p5.Vector.sub(peep.pos, q.center).mult(0.3);
+        peep.pos.sub(base);
+        
+        //base.normalize().mult(12);
+        //peep.pos.sub(base);
+      }
     }    
   }
-  let q = new quarantine(mouseX, mouseY, quarantine_radius);
-  quarantines.push(q); 
-  for (let peep of peeps) {
-    let d = p5.Vector.sub(peep.pos, q.center).mag();
-    if ((d > q.radius - peep.radius - 4) && (d < q.radius + peep.radius + 4)) {
-      let base = p5.Vector.sub(peep.pos, q.center).mult(0.3);
-      peep.pos.sub(base);
-      
-      //base.normalize().mult(12);
-      //peep.pos.sub(base);
-    }
-  }
+}
+
+function rpois(mean) {
+
+  var L = Math.exp(-mean);
+  var p = 1.0;
+  var k = 0;
+
+  do {
+      k++;
+      p *= Math.random();
+  } while (p > L);
+
+  return (k - 1);  
 }

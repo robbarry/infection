@@ -1,7 +1,7 @@
 let cities = [];
-let city_count = 20;
+let city_count = 15;
 let minimum_city_spacing = 40; // minimum distance between cities
-let minimum_city_pop = 20;
+let minimum_city_pop = 50;
 let maximum_city_pop = 200;
 let cycle = 0;
 let cycles_per_day = 40;
@@ -16,10 +16,11 @@ let infection_distance = 8; // how far apart can dots infect each other
 let r0 = 2; // how many dots will each dot infect?
 let lockdown_r0 = 1.5;
 let infection_duration = cycles_per_day * 14; // how many cycles do dots stay infected
-let initial_infection_count = 3;
+let initial_infection_count = 1;
 let interactions = 0;
 let interactions_per_turn;
 let odds_of_infection;
+let immunity_duration = cycles_per_day * 28;
 
 // movement parameters
 let travel_prob = 0.0003; // what is the rate of travel
@@ -45,6 +46,9 @@ let nationwide_quarantine = false;
 let display_graph_x = 450;
 let display_graph_width = 300;
 let display_graph_scale_factor = 100;
+
+let economic_output = 0;
+let economic_output_display = [];
 
 function setup() {	
 	frameRate(120);
@@ -139,10 +143,23 @@ function draw() {
 	text("Day #" + daynum, display_graph_x + 10, 20);
 	interactions_per_turn = interactions / (cycle * total_infected);
 	let my_r0 = r0;
-	if (nationwide_lockdown) my_r0 = lockdown_r0;
+	if (nationwide_lockdown) my_r0 = lockdown_r0;	
 	odds_of_infection = (interactions_per_turn * my_r0) / (infection_duration);							
-	console.log(odds_of_infection);
-
+	
+	// economic calculations
+	if (cycle % 5 == 0) {
+		economic_output_display.push(economic_output);
+		while (economic_output_display.length > 300) { economic_output_display.shift(); }
+		economic_output = 0;
+	}
+	stroke("green");
+	fill("green");
+	for (i = 0; i < economic_output_display.length; i++) {
+		let econ_output = economic_output_display[i];
+		line(i + display_graph_x + 325, 100, i + display_graph_x + 325, 100 - econ_output);
+	}
+		
+	
 }
 
 // class for city
@@ -308,7 +325,7 @@ function person(id, city) {
 
 	this.display = function() {
 		if (this.infected > infection_duration) {
-			this.infected = -1;
+			this.infected = -immunity_duration;
 		}
 		if (this.infected == 0) {
 			stroke(10, 150, 100, 150);
@@ -320,6 +337,7 @@ function person(id, city) {
 		} else if (this.infected < 0) {
 			stroke(100, 100, 100, 100);
 			fill(100, 100, 100, 100);			
+			this.infected++;
 		}
 
 		ellipse(this.pos.x, this.pos.y, person_scale, person_scale);
@@ -328,7 +346,7 @@ function person(id, city) {
 	this.update = function() {
 		let lockdown_factor = 1;
 		if (this.city.lockdown && !this.in_transit) { lockdown_factor = .1; }
-		this.pos.add(p5.Vector.mult(this.vel, lockdown_factor));
+		this.move(p5.Vector.mult(this.vel, lockdown_factor));
 		let dist = p5.Vector.sub(this.pos, this.city.pos).mag();
 		if (dist < this.city.radius / 3 && this.in_transit) {
 			this.in_transit = false; 
@@ -346,14 +364,19 @@ function person(id, city) {
 		        let incidence = p5.Vector.mult(this.vel, -1);
 		        let dot = incidence.dot(normal);
 		        this.vel.set(2*normal.x*dot - incidence.x, 2*normal.y*dot - incidence.y, 0);
-		        this.pos.add(this.vel);        
+		        this.move(this.vel);  
 	      	} 
 	    }
 	}
 
+	this.move = function(velocity) {
+		this.pos.add(velocity);
+		advance_economic_activity(this, velocity);
+	}
+
 	this.travel = function(city_num) {		
 		if (city_num != this.id) {
-			this.in_transit = true;			
+			this.in_transit = true;
 			cities[this.city.id].populace.splice(this.id, 1);
 			cities[this.city.id].pop -= 1;
 			this.city = cities[city_num];
@@ -410,5 +433,13 @@ function quarantine_nation() {
 		quarantine_button.style("background-color", "lightblue");
 	} else {
 		quarantine_button.style("background-color", "white");
+	}
+}
+
+function advance_economic_activity(p, velocity) {	
+	if (p.infected <= 0) {
+		economic_output += velocity.mag() / 35;	
+	} else {
+		economic_output -= velocity.mag() / 35;	
 	}
 }
