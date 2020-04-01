@@ -39,7 +39,7 @@ function setup() {
   // let params = getURLParams();
   population = get_parameter("population", 500, true);  
   infection_duration = get_parameter("infection_duration", 14, true) * (500 / 14);
-  immune_duration = round(get_parameter("immune_duration", 60, true) * (500 / 14));
+  immune_duration = round(get_parameter("immune_duration", 40, true) * (500 / 14));
   r0 = get_parameter("r0", 2.7, true);
   testing_speed = get_parameter("testing_speed", 10, true);  
   peep_speed = get_parameter("peep_speed", 0.35, true);
