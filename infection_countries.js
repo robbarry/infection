@@ -152,16 +152,30 @@ function setup() {
 	let max_countries = round(sqrt(width * height) / (2 * minimum_country_spacing));
 	if (country_count > max_countries) { country_count = max_countries; }
 
-	// Assign random archetypes to countries
-	let archetypes = Object.keys(POLICY_ARCHETYPES);
-	let strategies = ["static", "responsive", "zero_tolerance"];
+	// Balanced Starting Configuration
+	const STARTING_CONFIGS = [
+		{ archetype: "open", strategy: "static" },       // 1. Control Group (Reckless)
+		{ archetype: "open", strategy: "static" },       // 2. Control Group
+		{ archetype: "moderate", strategy: "static" },   // 3. Middle Ground
+		{ archetype: "moderate", strategy: "static" },   // 4. Middle Ground
+		{ archetype: "strict", strategy: "static" },     // 5. Hard Liner
+		{ archetype: "zeroCovid", strategy: "static" },  // 6. Bunker
+		{ archetype: "open", strategy: "responsive" },   // 7. AI: Responsive
+		{ archetype: "open", strategy: "responsive" },   // 8. AI: Responsive
+		{ archetype: "open", strategy: "responsive" },   // 9. AI: Responsive
+		{ archetype: "moderate", strategy: "zero_tolerance" }, // 10. AI: Zero Tol
+		{ archetype: "moderate", strategy: "zero_tolerance" }, // 11. AI: Zero Tol
+		{ archetype: "moderate", strategy: "zero_tolerance" }  // 12. AI: Zero Tol
+	];
 
 	for (var i = 0; i < country_count; i++) {
 		let my_pop = minimum_country_pop; // Fixed population
 		total_pop += my_pop;
-		let archetype = random(archetypes);
-		let c = new Country(i, my_pop, COUNTRY_NAMES[i], archetype);
-		c.strategy = random(strategies); // Assign random strategy
+		
+		let config = STARTING_CONFIGS[i % STARTING_CONFIGS.length];
+		
+		let c = new Country(i, my_pop, COUNTRY_NAMES[i], config.archetype);
+		c.strategy = config.strategy;
 		countries.push(c);
 	}
 
