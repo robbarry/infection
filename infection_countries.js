@@ -124,6 +124,7 @@ let global_gdp_history = [];
 // Simulation State
 let sim_running = false;
 let fatality_rate = 0.02; // Default 2%
+let total_deaths = 0;
 
 // Scenarios
 const SCENARIOS = {
@@ -196,6 +197,7 @@ function setup() {
 function startSimulation() {
 	countries = [];
 	total_pop = 0;
+	total_deaths = 0;
 	cycle = 0;
 	global_gdp_history = [];
 	infection_display_count = [];
@@ -844,21 +846,10 @@ function Person(id, country) {
 
 	this.display = function() {
 		if (this.dead) {
-			stroke(40); 
-			fill(40); // Dark grey/black for dead
+			stroke(70); 
+			fill(70); // Brighter grey for dead so they are visible
 			ellipse(this.pos.x, this.pos.y, person_scale, person_scale);
-			// Draw a small X? Maybe too detailed. Just dark dot.
 			return;
-		}
-
-		if (this.infected > infection_duration) {
-			// Roll for fatality
-			if (Math.random() < fatality_rate) {
-				this.dead = true;
-				this.infected = 0; // No longer infectious or immune, just dead
-			} else {
-				this.infected = -immunity_duration;
-			}
 		}
 
 		if (this.in_quarantine) {
@@ -870,18 +861,38 @@ function Person(id, country) {
 		} else if (this.infected > 0) {
 			stroke(244, 67, 54, 255); // Red dots
 			fill(244, 67, 54, 255);
-			this.infected++;
 		} else if (this.infected < 0) {
 			stroke(100, 100, 100, 100); // Grey (immune)
 			fill(100, 100, 100, 100);
-			this.infected++;
 		}
 
 		ellipse(this.pos.x, this.pos.y, person_scale, person_scale);
 	};
 
 	this.update = function(movement_factor) {
-		if (this.in_quarantine || this.dead) {
+		if (this.dead) return;
+
+		// Handle infection progression
+		if (this.infected > 0) {
+			this.infected++;
+			
+			if (this.infected > infection_duration) {
+				// Roll for fatality
+				if (Math.random() < fatality_rate) {
+					this.dead = true;
+					this.infected = 0;
+					this.country.pop--;
+					total_pop--;
+					total_deaths++;
+					return; // Stop processing for this person
+				} else {
+					// Survives -> Permanent Immunity
+					this.infected = -1; 
+				}
+			}
+		}
+
+		if (this.in_quarantine) {
 			return;
 		}
 
@@ -1094,9 +1105,11 @@ function updatePanelStats(country) {
 function updateGlobalStats() {
 	let rtEl = document.getElementById('rt-counter');
 	let newEl = document.getElementById('new-counter');
+	let deathEl = document.getElementById('death-counter');
 	let rtValue = Number.isFinite(global_rt_estimate) ? global_rt_estimate : 0;
 	if (rtEl) rtEl.innerText = "R_t: " + rtValue.toFixed(2);
 	if (newEl) newEl.innerText = "New/day: " + last_daily_new_infections;
+	if (deathEl) deathEl.innerText = "Deaths: " + total_deaths;
 }
 
 function setRadio(name, value) {
