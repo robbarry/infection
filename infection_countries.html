@@ -1,0 +1,103 @@
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pandemic Policy Simulator</title>
+  <link rel="stylesheet" href="infection_countries.css">
+  <script src="js/chance.min.js"></script>
+  <script language="javascript" type="text/javascript" src="libraries/p5.min.js"></script>
+  <script language="javascript" type="text/javascript" src="infection_countries.js"></script>
+</head>
+<body>
+
+<div id="app-container">
+  <!-- Sidebar -->
+  <div id="sidebar">
+    <div>
+      <h1>Pandemic Policy</h1>
+      <div class="subtitle">Simulator & Strategy Sandbox</div>
+      <p style="font-size: 0.8rem; line-height: 1.4; color: #888;">
+        A virus is spreading across countries with different policies.
+        Click a country to view and change its policies.
+      </p>
+    </div>
+
+    <!-- Global Controls -->
+    <div class="section">
+      <div class="section-title">Global Policy</div>
+      <div id="global-controls-buttons">
+        <!-- Buttons injected by JS or hardcoded? Let's hardcode the container, JS fills or we hardcode buttons with onclicks.
+             Since the JS logic defines colors etc, letting JS populate this is safer to keep in sync. -->
+      </div>
+    </div>
+
+    <!-- Leaderboard -->
+    <div class="section" style="flex-grow: 1; display: flex; flex-direction: column;">
+      <div class="section-title">GDP Rankings</div>
+      <ul id="leaderboard-list">
+        <!-- JS will populate -->
+      </ul>
+    </div>
+  </div>
+
+  <!-- Main View -->
+  <div id="canvas-container">
+    <!-- Day Counter Overlay -->
+    <div id="stats-overlay">
+      <div id="day-counter">Day #0</div>
+    </div>
+
+    <!-- Country Detail Panel (Floating) -->
+    <div id="policy-panel">
+        <h3 id="panel-country-name">Country Name</h3>
+        <div class="stats-row">
+          <span>Population:</span> <span id="panel-pop">0</span>
+        </div>
+        <div class="stats-row">
+          <span>Infected:</span> <span id="panel-infected">0%</span>
+        </div>
+        <div class="stats-row">
+          <span>GDP:</span> <span id="panel-gdp">$0</span>
+        </div>
+        <div class="stats-row">
+            <span>Quarantined:</span> <span id="panel-quarantined">0</span>
+        </div>
+        
+        <hr>
+
+        <label class="section-title" style="display:block; margin-bottom:5px;">Policy Preset</label>
+        <select id="panel-archetype-select">
+            <!-- Options populated by JS -->
+        </select>
+
+        <div style="margin-top: 15px;">
+            <div class="section-title">Internal Movement</div>
+            <div class="radio-group" id="panel-movement-group">
+                <label><input type="radio" name="movement" value="none"> None (Lockdown)</label>
+                <label><input type="radio" name="movement" value="partial"> Partial</label>
+                <label><input type="radio" name="movement" value="full"> Full (Freedom)</label>
+            </div>
+
+            <div class="section-title">Border Policy</div>
+            <div class="radio-group" id="panel-border-group">
+                <label><input type="radio" name="border" value="open"> Open</label>
+                <label><input type="radio" name="border" value="screening"> Screening</label>
+                <label><input type="radio" name="border" value="closed"> Closed</label>
+            </div>
+
+            <div class="section-title">Sick Travelers</div>
+            <div class="radio-group" id="panel-sick-group">
+                <label><input type="radio" name="sick" value="allow"> Allow Entry</label>
+                <label><input type="radio" name="sick" value="deny"> Deny Entry</label>
+                <label><input type="radio" name="sick" value="quarantine"> Mandatory Quarantine</label>
+            </div>
+        </div>
+
+        <hr>
+        <button class="close-btn" onclick="hidePolicyPanel()">Close Selection</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
