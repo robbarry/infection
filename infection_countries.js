@@ -23,7 +23,7 @@ const COUNTRY_NAMES = [
 const POLICY_ARCHETYPES = {
 	open: {
 		name: "Open",
-		description: "Minimal restrictions, prioritize economy",
+		description: "High mobility, open borders",
 		internalMovement: "none",
 		borderPolicy: "open",
 		sickTravelerPolicy: "allow",
@@ -31,7 +31,7 @@ const POLICY_ARCHETYPES = {
 	},
 	moderate: {
 		name: "Moderate",
-		description: "Balanced approach",
+		description: "Targeted limits, screening, quarantine",
 		internalMovement: "partial",
 		borderPolicy: "screening",
 		sickTravelerPolicy: "quarantine",
@@ -39,8 +39,8 @@ const POLICY_ARCHETYPES = {
 	},
 	strict: {
 		name: "Strict",
-		description: "Strong restrictions to minimize spread",
-		internalMovement: "partial",
+		description: "Strong internal limits, deny sick travelers",
+		internalMovement: "full",
 		borderPolicy: "screening",
 		sickTravelerPolicy: "deny",
 		color: [255, 112, 67] // Deep Orange
@@ -84,11 +84,21 @@ let infection_distance = 8;
 let r0 = 2;
 let infection_duration = cycles_per_day * 14;
 let initial_infection_count = 1;
-let interactions = 0;
-let interactions_per_turn;
-let odds_of_infection;
+let daily_interactions = 0;
+let daily_new_infections = 0;
+let daily_infected_sum = 0;
+let daily_cycle_count = 0;
+let interactions_per_turn = 0;
+let odds_of_infection = 0;
+let global_rt_estimate = 0;
+let last_daily_new_infections = 0;
+let infectious_days = 0;
 let immunity_duration = cycles_per_day * 28;
 let quarantine_duration = cycles_per_day * 14;
+let latent_duration = cycles_per_day * 2;
+let baseline_contacts_per_day = 10;
+infectious_days = Math.max(1, (infection_duration - latent_duration) / cycles_per_day);
+odds_of_infection = (r0 / infectious_days) / baseline_contacts_per_day;
 
 // movement parameters
 let travel_prob = 0.0003;
@@ -107,7 +117,6 @@ let selected_country = null;
 
 let display_graph_x = 20; // Will be relative to width
 let display_graph_width = 300;
-let display_graph_scale_factor = 100;
 
 // Economic tracking
 let global_gdp_history = [];
@@ -163,6 +172,7 @@ function setup() {
 	// Initialize UI
 	initGlobalControls();
 	initPolicyPanelListeners();
+	updateGlobalStats();
 }
 
 function draw() {
@@ -189,6 +199,8 @@ function draw() {
 		country.processQuarantine();
 		total_infected += country.infected_count;
 	}
+	daily_infected_sum += total_infected;
+	daily_cycle_count += 1;
 
 	// Track infection over time
 	if (cycle % 10 == 0) {
@@ -202,7 +214,7 @@ function draw() {
 		for (let country of countries) {
 			let gdp_tick = country.calculateGDP();
 			country.gdp += gdp_tick;
-			country.gdpHistory.push(gdp_tick);
+			country.gdpHistory.push(country.lastGdpIndex);
 			if (country.gdpHistory.length > 300) country.gdpHistory.shift();
 			global_gdp += gdp_tick;
 		}
@@ -231,9 +243,42 @@ function draw() {
 	let daynum = floor(cycle / cycles_per_day);
 	document.getElementById('day-counter').innerText = "Day #" + daynum;
 
-	// Calculate infection odds
-	interactions_per_turn = interactions / (cycle * Math.max(1, total_infected));
-	odds_of_infection = (interactions_per_turn * r0) / infection_duration;
+	if (cycle % cycles_per_day === 0) {
+		finalizeDailyMetrics();
+	}
+}
+
+function finalizeDailyMetrics() {
+	let avg_infected = daily_cycle_count > 0 ? (daily_infected_sum / daily_cycle_count) : 0;
+
+	if (avg_infected > 0 && daily_interactions > 0) {
+		let interactions_per_infected = daily_interactions / avg_infected;
+		let target_daily_secondary = r0 / infectious_days;
+		let estimated_odds = target_daily_secondary / interactions_per_infected;
+		odds_of_infection = Math.max(0, Math.min(1, estimated_odds));
+		interactions_per_turn = daily_interactions / daily_cycle_count;
+	} else {
+		odds_of_infection = 0;
+		interactions_per_turn = 0;
+	}
+
+	if (avg_infected > 0) {
+		global_rt_estimate = (daily_new_infections / avg_infected) * infectious_days;
+	} else {
+		global_rt_estimate = 0;
+	}
+	last_daily_new_infections = daily_new_infections;
+
+	for (let country of countries) {
+		country.finalizeDay(infectious_days);
+	}
+
+	daily_interactions = 0;
+	daily_new_infections = 0;
+	daily_infected_sum = 0;
+	daily_cycle_count = 0;
+
+	updateGlobalStats();
 }
 
 function renderInfectionGraph(total_infected) {
@@ -249,18 +294,29 @@ function renderInfectionGraph(total_infected) {
 		fill(200);
 		textSize(10);
 		textAlign(LEFT);
-		text("Active Cases", graphX + 5, graphY + 15);
+		text("Active cases (% of global pop)", graphX + 5, graphY + 15);
 
 		// Draw limit line
 		stroke(100, 100, 255);
 		let limitY = graphY + 100 - overwhelmed;
 		line(graphX, limitY, graphX + display_graph_width, limitY);
+		noStroke();
+		fill(120);
+		textAlign(LEFT);
+		text(overwhelmed + "% threshold", graphX + 5, limitY - 2);
 
 		for (let i = 0; i < infection_display_count.length; i++) {
 			stroke(255, 80, 80);
-			let h = infection_display_count[i] / total_pop * display_graph_scale_factor;
+			let percent = infection_display_count[i] / total_pop * 100;
+			let h = Math.min(100, percent);
 			line(i + graphX, graphY + 100, i + graphX, graphY + 100 - h);
 		}
+
+		noStroke();
+		fill(120);
+		textAlign(RIGHT);
+		text("100%", graphX - 5, graphY + 10);
+		text("0%", graphX - 5, graphY + 100);
 	}
 }
 
@@ -284,6 +340,11 @@ function renderGDPGraph() {
 		}
 	}
 
+	// Baseline line at index 1.0
+	stroke(100);
+	let baselineY = graphY + graphHeight - (1 / maxGdp * (graphHeight - 10));
+	line(graphX, baselineY, graphX + graphWidth, baselineY);
+
 	// Draw each country's GDP line
 	strokeWeight(1.5);
 	for (let c of countries) {
@@ -305,7 +366,7 @@ function renderGDPGraph() {
 	fill(200);
 	textAlign(LEFT);
 	textSize(10);
-	text("Economic Activity (GDP)", graphX + 5, graphY + 15);
+	text("Output index (per-capita)", graphX + 5, graphY + 15);
 }
 
 // Country class
@@ -332,6 +393,14 @@ function Country(id, pop, name, archetype = "moderate") {
 	// Economic tracking
 	this.gdp = 0;
 	this.gdpHistory = [];
+	this.lastGdpIndex = 0;
+
+	// Daily stats
+	this.dailyNewInfections = 0;
+	this.dailyInfectedSum = 0;
+	this.dailyCycleCount = 0;
+	this.lastDailyNewInfections = 0;
+	this.rtEstimate = 0;
 
 	// Quarantine zone
 	this.quarantineZone = [];
@@ -412,10 +481,10 @@ function Country(id, pop, name, archetype = "moderate") {
 		}
 
 		// Open borders
-		if (traveler.infected > 0) {
+		if (traveler.infected > latent_duration) {
 			return this.handleSickTraveler(traveler);
 		}
-		return { allowed: true, reason: "open_borders" };
+		return { allowed: true, reason: traveler.infected > 0 ? "asymptomatic_entry" : "open_borders" };
 	};
 
 	this.handleSickTraveler = function(traveler) {
@@ -448,23 +517,40 @@ function Country(id, pop, name, archetype = "moderate") {
 		}
 	};
 
+	this.finalizeDay = function(infectious_days) {
+		let avg_infected = this.dailyCycleCount > 0 ? (this.dailyInfectedSum / this.dailyCycleCount) : 0;
+		if (avg_infected > 0) {
+			this.rtEstimate = (this.dailyNewInfections / avg_infected) * infectious_days;
+		} else {
+			this.rtEstimate = 0;
+		}
+		this.lastDailyNewInfections = this.dailyNewInfections;
+		this.dailyNewInfections = 0;
+		this.dailyInfectedSum = 0;
+		this.dailyCycleCount = 0;
+	};
+
 	this.calculateGDP = function() {
-		let base_output = 0;
+		let productive = 0;
+		let sick = 0;
 
 		for (let p of this.populace) {
 			if (p.in_quarantine) continue;
 
 			if (p.infected > 0) {
-				base_output -= 0.3;
-			} else if (p.infected === 0) {
-				base_output += p.vel.mag() * 0.5;
+				sick += 1;
+			} else {
+				productive += 1;
 			}
 		}
 
 		let policy_penalty = LOCKDOWN_PENALTY[this.policy.internalMovement];
 		let trade_penalty = BORDER_PENALTY[this.policy.borderPolicy];
 
-		return base_output * policy_penalty * trade_penalty;
+		let base_output = productive + (sick * 0.2);
+		let output = base_output * policy_penalty * trade_penalty;
+		this.lastGdpIndex = this.pop > 0 ? output / this.pop : 0;
+		return output;
 	};
 
 	this.display = function(selected) {
@@ -563,7 +649,9 @@ function Country(id, pop, name, archetype = "moderate") {
 			}
 		}
 
-		this.infected_rate = this.infected_count / this.pop;
+		this.infected_rate = this.pop > 0 ? (this.infected_count / this.pop) : 0;
+		this.dailyInfectedSum += this.infected_count;
+		this.dailyCycleCount += 1;
 		if (this.infected_rate > flee_threshold) {
 			this.calculate_flee_countries();
 		}
@@ -680,14 +768,16 @@ function Person(id, country) {
 	this.infect = function() {
 		if (this.in_quarantine) return;
 
-		if (this.infected > 0) {
+		if (this.infected > latent_duration) {
 			for (let p of this.country.populace) {
 				if (p.id != this.id && !p.in_quarantine) {
 					if (p5.Vector.sub(this.pos, p.pos).mag() < infection_distance) {
-						if (p.infected == 0) { interactions++; }
-						if (cycle >= 5) {
+						if (p.infected == 0) {
+							daily_interactions++;
 							if (Math.random() < odds_of_infection) {
-								if (p.infected == 0) { p.infected = 1; }
+								p.infected = 1;
+								daily_new_infections++;
+								this.country.dailyNewInfections++;
 							}
 						}
 					}
@@ -794,9 +884,20 @@ function showPolicyPanel(country) {
 function updatePanelStats(country) {
 	document.getElementById('panel-country-name').innerText = country.name;
 	document.getElementById('panel-pop').innerText = country.pop;
-	document.getElementById('panel-infected').innerText = (country.infected_rate * 100).toFixed(1) + "%";
-	document.getElementById('panel-gdp').innerText = "$" + country.gdp.toFixed(0);
+	document.getElementById('panel-infected').innerText = (country.infected_rate * 100).toFixed(1) + "% (" + country.infected_count + ")";
+	document.getElementById('panel-new').innerText = country.lastDailyNewInfections;
+	let rtValue = Number.isFinite(country.rtEstimate) ? country.rtEstimate : 0;
+	document.getElementById('panel-rt').innerText = rtValue.toFixed(2);
+	document.getElementById('panel-gdp').innerText = (country.lastGdpIndex * 100).toFixed(0) + "%";
 	document.getElementById('panel-quarantined').innerText = country.quarantineZone.length;
+}
+
+function updateGlobalStats() {
+	let rtEl = document.getElementById('rt-counter');
+	let newEl = document.getElementById('new-counter');
+	let rtValue = Number.isFinite(global_rt_estimate) ? global_rt_estimate : 0;
+	if (rtEl) rtEl.innerText = "R_t: " + rtValue.toFixed(2);
+	if (newEl) newEl.innerText = "New/day: " + last_daily_new_infections;
 }
 
 function setRadio(name, value) {
@@ -822,7 +923,7 @@ function renderLeaderboardHTML() {
 					<span class="country-dot" style="background-color:${colorStr}"></span>
 					${i + 1}. ${c.name}
 				</span>
-				<span>$${c.gdp.toFixed(0)}</span>
+				<span>${c.gdp.toFixed(0)}</span>
 			</li>
 		`;
 	}

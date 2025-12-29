@@ -31,9 +31,18 @@
       </div>
     </div>
 
+    <div class="section">
+      <div class="section-title">Legend</div>
+      <div class="legend-row"><span class="legend-dot susceptible"></span>Susceptible</div>
+      <div class="legend-row"><span class="legend-dot infected"></span>Infected</div>
+      <div class="legend-row"><span class="legend-dot immune"></span>Immune</div>
+      <div class="legend-row"><span class="legend-dot quarantined"></span>Quarantined</div>
+      <div class="legend-row"><span class="legend-ring"></span>Policy ring</div>
+    </div>
+
     <!-- Leaderboard -->
     <div class="section" style="flex-grow: 1; display: flex; flex-direction: column;">
-      <div class="section-title">GDP Rankings</div>
+      <div class="section-title">Output Rankings</div>
       <ul id="leaderboard-list">
         <!-- JS will populate -->
       </ul>
@@ -45,6 +54,8 @@
     <!-- Day Counter Overlay -->
     <div id="stats-overlay">
       <div id="day-counter">Day #0</div>
+      <div id="rt-counter">R_t: 0.00</div>
+      <div id="new-counter">New/day: 0</div>
     </div>
 
     <!-- Country Detail Panel (Floating) -->
@@ -54,10 +65,16 @@
           <span>Population:</span> <span id="panel-pop">0</span>
         </div>
         <div class="stats-row">
-          <span>Infected:</span> <span id="panel-infected">0%</span>
+          <span>Active cases:</span> <span id="panel-infected">0% (0)</span>
         </div>
         <div class="stats-row">
-          <span>GDP:</span> <span id="panel-gdp">$0</span>
+          <span>New/day:</span> <span id="panel-new">0</span>
+        </div>
+        <div class="stats-row">
+          <span>R_t (est.):</span> <span id="panel-rt">0.00</span>
+        </div>
+        <div class="stats-row">
+          <span>Output index:</span> <span id="panel-gdp">0%</span>
         </div>
         <div class="stats-row">
             <span>Quarantined:</span> <span id="panel-quarantined">0</span>
@@ -73,9 +90,9 @@
         <div style="margin-top: 15px;">
             <div class="section-title">Internal Movement</div>
             <div class="radio-group" id="panel-movement-group">
-                <label><input type="radio" name="movement" value="none"> None (Lockdown)</label>
+                <label><input type="radio" name="movement" value="none"> None (No restrictions)</label>
                 <label><input type="radio" name="movement" value="partial"> Partial</label>
-                <label><input type="radio" name="movement" value="full"> Full (Freedom)</label>
+                <label><input type="radio" name="movement" value="full"> Full (Lockdown)</label>
             </div>
 
             <div class="section-title">Border Policy</div>

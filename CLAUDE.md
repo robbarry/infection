@@ -40,15 +40,17 @@ Each simulation is self-contained with its own HTML/JS:
    - Most sophisticated version with full UI
    - Policy archetypes: Open, Moderate, Strict, Zero-COVID
    - Per-country controls: internal movement, border policy, sick traveler handling
-   - GDP tracking with policy penalties
+   - Output index tracking with policy penalties
+   - Daily R_t and new cases displayed in overlay and panel
    - Quarantine zones for incoming infected travelers
    - Dark theme with sidebar and floating policy panel
 
 ### Key Concepts Across All Simulations
 
 - **Infection model**: Each person has `infected` counter (0=healthy, >0=infected days, <0=immune days)
+- **Latency**: Newly infected people are non-infectious for a short latent period
 - **Collision detection**: O(n²) pairwise checks between all people
-- **Infection probability**: `odds_of_infection = (r0 * interactions_per_turn) / infection_duration`
+- **Infection probability**: Daily odds estimated from observed contacts and target r0
 - **Boundary physics**: People bounce off walls and circular boundaries using vector reflection
 
 ### Dependencies
