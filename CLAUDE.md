@@ -16,7 +16,7 @@ open infection_cities.html   # Multi-city simulation with lockdown/quarantine bu
 open infection_countries.html # Country-level policy simulator (most feature-rich)
 ```
 
-No build step or server required.
+No build step, server, tests, or linter required.
 
 ## Architecture
 
@@ -47,11 +47,29 @@ Each simulation is self-contained with its own HTML/JS:
 
 ### Key Concepts Across All Simulations
 
-- **Infection model**: Each person has `infected` counter (0=healthy, >0=infected days, <0=immune days)
-- **Latency**: Newly infected people are non-infectious for a short latent period
+- **Infection model**: Each person has `infected` counter (0=healthy, >0=infected cycles, <0=immune cycles)
+- **Disease progression**: Latent period (non-infectious) → Infectious → Immune
 - **Collision detection**: O(n²) pairwise checks between all people
-- **Infection probability**: Daily odds estimated from observed contacts and target r0
+- **Infection probability**: Derived from target R0 divided by infectious period and expected contacts
 - **Boundary physics**: People bounce off walls and circular boundaries using vector reflection
+
+### Infection State Machine
+
+```
+infected == 0  → Susceptible (can be infected)
+infected > 0   → Infected (counter increments each cycle)
+  - infected <= latent_duration → Not yet infectious
+  - infected > latent_duration → Infectious, can spread
+  - infected > infection_duration → Transitions to immune
+infected < 0   → Immune (counter increments toward 0)
+```
+
+### Time System (Countries Simulation)
+
+- `cycles_per_day = 40` - simulation cycles per simulated day
+- Daily metrics (R_t, new infections) finalized at `cycle % cycles_per_day === 0`
+- R_t estimated as: `(daily_new_infections / avg_infected) * infectious_days`
+- Infection odds: `(R0 / infectious_days) / baseline_contacts_per_day`
 
 ### Dependencies
 
@@ -73,7 +91,7 @@ All simulations use similar person classes with:
 - `display()` - render based on infection state
 - `update()` - move and handle state transitions
 - `infect()` - check proximity to others and probabilistically infect
-- `check_collision()` - physics for bouncing off others
+- `check_collision()` / boundary collision - physics for bouncing
 
 ### Policy System (Countries Simulation)
 `CountryPolicy` class encapsulates:
@@ -81,7 +99,9 @@ All simulations use similar person classes with:
 - `borderPolicy`: "open" | "screening" | "closed"
 - `sickTravelerPolicy`: "allow" | "deny" | "quarantine"
 
-GDP calculation applies penalties based on policy restrictiveness.
+GDP calculation applies penalties based on policy restrictiveness:
+- `LOCKDOWN_PENALTY`: none=1.0, partial=0.6, full=0.2
+- `BORDER_PENALTY`: open=1.0, screening=0.85, closed=0.5
 
 ## Landing the Plane (Session Completion)
 
@@ -89,19 +109,17 @@ GDP calculation applies penalties based on policy restrictiveness.
 
 **MANDATORY WORKFLOW:**
 
-1. **File issues for remaining work** - Create issues for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update issue status** - Close finished work, update in-progress items
-4. **PUSH TO REMOTE** - This is MANDATORY:
+1. **File issues for remaining work** - Create beads issues for anything that needs follow-up
+2. **Update issue status** - Close finished work, update in-progress items
+3. **PUSH TO REMOTE** - This is MANDATORY:
    ```bash
    git pull --rebase
    bd sync
    git push
    git status  # MUST show "up to date with origin"
    ```
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Provide context for next session
+4. **Verify** - All changes committed AND pushed
+5. **Hand off** - Provide context for next session
 
 **CRITICAL RULES:**
 - Work is NOT complete until `git push` succeeds

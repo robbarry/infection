@@ -1,15 +1,15 @@
 let countries = [];
 let country_count = 12;
 let minimum_country_spacing = 50;
-let minimum_country_pop = 50;
-let maximum_country_pop = 200;
+let minimum_country_pop = 50; // Reduced for fit
+let maximum_country_pop = 50; 
 let cycle = 0;
 let cycles_per_day = 40;
 let total_pop = 0;
 let infection_display_count = [];
 let intervention_display = [];
-let country_scale = 80;
-let person_scale = 6;
+let country_scale = 60; // Reduced scale
+let person_scale = 5;
 
 // Country names
 const COUNTRY_NAMES = [
@@ -154,12 +154,15 @@ function setup() {
 
 	// Assign random archetypes to countries
 	let archetypes = Object.keys(POLICY_ARCHETYPES);
+	let strategies = ["static", "responsive", "zero_tolerance"];
 
 	for (var i = 0; i < country_count; i++) {
-		let my_pop = random(minimum_country_pop, maximum_country_pop);
+		let my_pop = minimum_country_pop; // Fixed population
 		total_pop += my_pop;
 		let archetype = random(archetypes);
-		countries.push(new Country(i, my_pop, COUNTRY_NAMES[i], archetype));
+		let c = new Country(i, my_pop, COUNTRY_NAMES[i], archetype);
+		c.strategy = random(strategies); // Assign random strategy
+		countries.push(c);
 	}
 
 	for (let country of countries) {
@@ -402,39 +405,60 @@ function Country(id, pop, name, archetype = "moderate") {
 	this.lastDailyNewInfections = 0;
 	this.rtEstimate = 0;
 
+	// AI Strategy
+	this.strategy = "static"; // static, responsive, zero_tolerance
+	this.days_clean = 0;
+
 	// Quarantine zone
 	this.quarantineZone = [];
 
-	// Position country (avoid overlaps)
-	var reposition = true;
-	let efforts = 0;
-	while (reposition) {
-		reposition = false;
-		// Keep within safer bounds considering graphs
-		let marginX = 20;
-		let marginY = 20;
-		this.pos = createVector(
-			random(this.radius + marginX, width - this.radius - marginX), 
-			random(this.radius + marginY, height - this.radius - 150)
-		);
-		for (let country of countries) {
-			if (country.id != this.id) {
-				if (p5.Vector.sub(this.pos, country.pos).mag() < this.radius + country.radius + minimum_country_spacing) {
-					reposition = true;
-					efforts++;
-					if (efforts > 20) {
-						minimum_country_spacing = minimum_country_spacing - 1;
-					}
-					break;
-				}
-			}
-		}
-	}
+	// Position country (Circular Layout for Fairness)
+	let layout_radius = Math.min(width, height) / 2 - 100;
+	let angle = map(id, 0, country_count, -PI/2, TWO_PI - PI/2); // Start at top
+	this.pos = createVector(
+		width / 2 + layout_radius * cos(angle),
+		height / 2 + layout_radius * sin(angle)
+	);
 
 	// Populate country
 	for (let i = 0; i < this.pop; i++) {
 		this.populace.push(new Person(i, this));
 	}
+
+	this.updatePolicyAI = function() {
+		if (this.strategy === "static") return;
+
+		let rate_pct = this.infected_rate * 100;
+		
+		if (this.strategy === "responsive") {
+			// Reacts to infection levels, tries to balance openness
+			if (rate_pct > 10) {
+				this.policy = new CountryPolicy("zeroCovid"); // Emergency break
+			} else if (rate_pct > 3) {
+				this.policy = new CountryPolicy("strict");
+			} else if (rate_pct > 0.5) {
+				this.policy = new CountryPolicy("moderate");
+			} else {
+				this.policy = new CountryPolicy("open");
+			}
+		} else if (this.strategy === "zero_tolerance") {
+			// Slams shut at first sign, opens only when safe
+			if (this.dailyNewInfections > 0 || this.infected_count > 0) {
+				this.policy = new CountryPolicy("zeroCovid");
+				this.days_clean = 0;
+			} else {
+				this.days_clean++;
+				if (this.days_clean > 14) {
+					// Safe to reopen, but keep screening
+					this.policy = new CountryPolicy("moderate");
+					// Actually, Zero Tolerance usually means "Open Internal, Closed Border" once safe
+					this.policy.internalMovement = "none";
+					this.policy.borderPolicy = "screening";
+					this.policy.sickTravelerPolicy = "quarantine";
+				}
+			}
+		}
+	};
 
 	this.initialize_partner_countries = function() {
 		for (let i = 0; i < country_count; i++) {
@@ -525,6 +549,9 @@ function Country(id, pop, name, archetype = "moderate") {
 			this.rtEstimate = 0;
 		}
 		this.lastDailyNewInfections = this.dailyNewInfections;
+		
+		this.updatePolicyAI();
+
 		this.dailyNewInfections = 0;
 		this.dailyInfectedSum = 0;
 		this.dailyCycleCount = 0;
@@ -547,8 +574,21 @@ function Country(id, pop, name, archetype = "moderate") {
 		let policy_penalty = LOCKDOWN_PENALTY[this.policy.internalMovement];
 		let trade_penalty = BORDER_PENALTY[this.policy.borderPolicy];
 
-		let base_output = productive + (sick * 0.2);
-		let output = base_output * policy_penalty * trade_penalty;
+		// Improved Economic Model
+		let fear_factor = 1.0;
+		// Fear rises with infection rate. 20% infection = 20% drop in consumption/production due to fear
+		fear_factor = Math.max(0.5, 1.0 - (this.infected_rate * 2)); 
+
+		// Healthcare collapse penalty
+		let healthcare_penalty = 1.0;
+		if (this.infected_rate > overwhelmed / 100) {
+			healthcare_penalty = 0.6; // Massive hit if hospitals overwhelmed
+		}
+
+		// Sick people contribute 0 (or cost money?) - let's say they contribute 0.
+		let base_output = productive; 
+		
+		let output = base_output * policy_penalty * trade_penalty * fear_factor * healthcare_penalty;
 		this.lastGdpIndex = this.pop > 0 ? output / this.pop : 0;
 		return output;
 	};
@@ -592,6 +632,13 @@ function Country(id, pop, name, archetype = "moderate") {
 		textSize(10);
 		fill(150);
 		text(POLICY_ARCHETYPES[this.policy.archetype]?.name || "Custom", this.pos.x, this.pos.y - my_radius / 2 - 8);
+		
+		// Strategy label
+		fill(120);
+		textSize(9);
+		let stratName = this.strategy.charAt(0).toUpperCase() + this.strategy.slice(1);
+		if (this.strategy === "zero_tolerance") stratName = "Zero-Tol";
+		text(stratName, this.pos.x, this.pos.y + my_radius / 2 + 15);
 
 		// Selection highlight
 		if (selected) {
@@ -846,7 +893,17 @@ function initPolicyPanelListeners() {
 	document.getElementById('panel-archetype-select').addEventListener('change', (e) => {
 		if (selected_country && e.target.value !== 'custom') {
 			selected_country.policy = new CountryPolicy(e.target.value);
+			selected_country.strategy = "static"; // Manual override disables AI
 			showPolicyPanel(selected_country); // Refresh UI to match new policy
+		}
+	});
+
+	// Strategy Select
+	document.getElementById('panel-strategy-select').addEventListener('change', (e) => {
+		if (selected_country) {
+			selected_country.strategy = e.target.value;
+			// If setting to static, it keeps current policy. 
+			// If setting to others, it will update next day.
 		}
 	});
 
@@ -863,7 +920,9 @@ function initPolicyPanelListeners() {
 			if (name === 'sick') selected_country.policy.sickTravelerPolicy = val;
 
 			selected_country.policy.archetype = "custom";
+			selected_country.strategy = "static"; // Manual override disables AI
 			document.getElementById('panel-archetype-select').value = 'custom';
+			document.getElementById('panel-strategy-select').value = 'static';
 		});
 	});
 }
@@ -875,6 +934,7 @@ function showPolicyPanel(country) {
 
 	// Set inputs
 	document.getElementById('panel-archetype-select').value = country.policy.archetype;
+	document.getElementById('panel-strategy-select').value = country.strategy;
 	
 	setRadio('movement', country.policy.internalMovement);
 	setRadio('border', country.policy.borderPolicy);
