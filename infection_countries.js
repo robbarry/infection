@@ -121,6 +121,42 @@ let display_graph_width = 300;
 // Economic tracking
 let global_gdp_history = [];
 
+// Simulation State
+let sim_running = false;
+let fatality_rate = 0.02; // Default 2%
+
+// Scenarios
+const SCENARIOS = {
+	covid: {
+		name: "COVID-19 Like",
+		r0: 2.5,
+		fatality_rate: 0.02,
+		infection_duration_days: 14,
+		latent_duration_days: 2
+	},
+	flu: {
+		name: "Common Flu",
+		r0: 1.5,
+		fatality_rate: 0.001,
+		infection_duration_days: 7,
+		latent_duration_days: 1
+	},
+	ebola: {
+		name: "Airborne Ebola",
+		r0: 5.0,
+		fatality_rate: 0.60,
+		infection_duration_days: 10,
+		latent_duration_days: 3
+	},
+	birdflu: {
+		name: "Mutated Bird Flu",
+		r0: 3.5,
+		fatality_rate: 0.15,
+		infection_duration_days: 21,
+		latent_duration_days: 5
+	}
+};
+
 // CountryPolicy class
 function CountryPolicy(archetype = "moderate") {
 	const base = POLICY_ARCHETYPES[archetype];
@@ -149,6 +185,21 @@ function setup() {
 		resizeCanvas(container.offsetWidth, container.offsetHeight);
 	});
 
+	// Initialize UI
+	initGlobalControls();
+	initPolicyPanelListeners();
+	initSetupListeners(); // New listener for setup overlay
+	
+	noLoop(); // Wait for start
+}
+
+function startSimulation() {
+	countries = [];
+	total_pop = 0;
+	cycle = 0;
+	global_gdp_history = [];
+	infection_display_count = [];
+	
 	let max_countries = round(sqrt(width * height) / (2 * minimum_country_spacing));
 	if (country_count > max_countries) { country_count = max_countries; }
 
@@ -186,13 +237,54 @@ function setup() {
 	// Patient zero in first country
 	countries[0].populace[0].infected = 1;
 
-	// Initialize UI
-	initGlobalControls();
-	initPolicyPanelListeners();
 	updateGlobalStats();
+	sim_running = true;
+	loop();
+}
+
+function initSetupListeners() {
+	const scenarioSelect = document.getElementById('scenario-select');
+	const r0Input = document.getElementById('setup-r0');
+	const fatalityInput = document.getElementById('setup-fatality');
+	const popInput = document.getElementById('setup-pop');
+	
+	// Populate scenarios
+	scenarioSelect.innerHTML = Object.entries(SCENARIOS).map(([key, val]) => 
+		`<option value="${key}">${val.name}</option>`
+	).join('');
+
+	scenarioSelect.addEventListener('change', (e) => {
+		let sc = SCENARIOS[e.target.value];
+		r0Input.value = sc.r0;
+		fatalityInput.value = (sc.fatality_rate * 100).toFixed(1);
+		// Update globals immediately? Or on start?
+		// Better to update inputs and let start read inputs.
+	});
+
+	// Trigger first change to set defaults
+	scenarioSelect.dispatchEvent(new Event('change'));
+}
+
+function commitSetup() {
+	// Read values
+	r0 = parseFloat(document.getElementById('setup-r0').value);
+	fatality_rate = parseFloat(document.getElementById('setup-fatality').value) / 100;
+	minimum_country_pop = parseInt(document.getElementById('setup-pop').value);
+	maximum_country_pop = minimum_country_pop;
+
+	// Calculate infection odds based on new R0
+	infectious_days = Math.max(1, (infection_duration - latent_duration) / cycles_per_day);
+	odds_of_infection = (r0 / infectious_days) / baseline_contacts_per_day;
+
+	// Hide overlay
+	document.getElementById('setup-overlay').style.display = 'none';
+
+	// Start
+	startSimulation();
 }
 
 function draw() {
+	if (!sim_running) return;
 	cycle++;
 	background(26, 26, 26); // Dark background #1a1a1a
 
@@ -591,7 +683,7 @@ function Country(id, pop, name, archetype = "moderate") {
 		let sick = 0;
 
 		for (let p of this.populace) {
-			if (p.in_quarantine) continue;
+			if (p.in_quarantine || p.dead) continue; // Dead produce nothing
 
 			if (p.infected > 0) {
 				sick += 1;
@@ -740,6 +832,7 @@ function Country(id, pop, name, archetype = "moderate") {
 function Person(id, country) {
 	this.country = country;
 	this.infected = 0;
+	this.dead = false;
 	this.id = id;
 	let t_pos = p5.Vector.random2D().mult((country.radius - person_scale) / 2 * random(1));
 	this.pos = p5.Vector.add(country.pos, t_pos);
@@ -750,8 +843,22 @@ function Person(id, country) {
 	this.quarantine_timer = 0;
 
 	this.display = function() {
+		if (this.dead) {
+			stroke(40); 
+			fill(40); // Dark grey/black for dead
+			ellipse(this.pos.x, this.pos.y, person_scale, person_scale);
+			// Draw a small X? Maybe too detailed. Just dark dot.
+			return;
+		}
+
 		if (this.infected > infection_duration) {
-			this.infected = -immunity_duration;
+			// Roll for fatality
+			if (Math.random() < fatality_rate) {
+				this.dead = true;
+				this.infected = 0; // No longer infectious or immune, just dead
+			} else {
+				this.infected = -immunity_duration;
+			}
 		}
 
 		if (this.in_quarantine) {
@@ -774,7 +881,7 @@ function Person(id, country) {
 	};
 
 	this.update = function(movement_factor) {
-		if (this.in_quarantine) {
+		if (this.in_quarantine || this.dead) {
 			return;
 		}
 
@@ -810,6 +917,7 @@ function Person(id, country) {
 	};
 
 	this.travel = function(target_country_id) {
+		if (this.dead) return false;
 		if (target_country_id == this.country.id) return false;
 
 		let target = countries[target_country_id];
@@ -844,7 +952,7 @@ function Person(id, country) {
 	};
 
 	this.infect = function() {
-		if (this.in_quarantine) return;
+		if (this.in_quarantine || this.dead) return;
 
 		if (this.infected > latent_duration) {
 			for (let p of this.country.populace) {
