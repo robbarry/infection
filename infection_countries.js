@@ -62,17 +62,17 @@ const MOVEMENT_MULTIPLIERS = {
 	full: 0.1
 };
 
-// Economic penalties
+// Economic penalties (adjusted for more interesting trade-offs)
 const LOCKDOWN_PENALTY = {
 	none: 1.0,
-	partial: 0.6,
-	full: 0.2
+	partial: 0.85,
+	full: 0.5 // Lockdown is costly, but not 80% loss
 };
 
 const BORDER_PENALTY = {
 	open: 1.0,
-	screening: 0.85,
-	closed: 0.5
+	screening: 0.97, // Screening is very cheap
+	closed: 0.8 // Closed borders are a significant hit
 };
 
 // Screening detection parameters
@@ -80,8 +80,8 @@ let screening_detection_start = 3; // days before screening can detect
 let screening_detection_rate = 0.85; // detection rate after start period
 
 // infection parameters
-let infection_distance = 8;
-let r0 = 2;
+let infection_distance = 12; // Increased from 8
+let r0 = 2.5; // Increased from 2
 let infection_duration = cycles_per_day * 14;
 let initial_infection_count = 1;
 let daily_interactions = 0;
@@ -591,19 +591,21 @@ function Country(id, pop, name, archetype = "moderate") {
 
 		// Improved Economic Model
 		let fear_factor = 1.0;
-		// Fear rises with infection rate. 20% infection = 20% drop in consumption/production due to fear
-		fear_factor = Math.max(0.5, 1.0 - (this.infected_rate * 2)); 
+		// Fear rises exponentially with infection rate. 
+		// At 10% infection, fear_factor is ~0.8. At 20%, it's ~0.5.
+		fear_factor = Math.max(0.3, 1.0 - pow(this.infected_rate * 4, 1.5)); 
 
 		// Healthcare collapse penalty
 		let healthcare_penalty = 1.0;
 		if (this.infected_rate > overwhelmed / 100) {
-			healthcare_penalty = 0.6; // Massive hit if hospitals overwhelmed
+			healthcare_penalty = 0.4; // Massive hit if hospitals overwhelmed (0.4 instead of 0.6)
 		}
 
-		// Sick people contribute 0 (or cost money?) - let's say they contribute 0.
-		let base_output = productive; 
+		// Sick people don't just contribute 0; they drain resources (medical costs, care)
+		// Each sick person drains as much as 0.5 productive people produce.
+		let net_output = productive - (sick * 0.5); 
 		
-		let output = base_output * policy_penalty * trade_penalty * fear_factor * healthcare_penalty;
+		let output = Math.max(0, net_output) * policy_penalty * trade_penalty * fear_factor * healthcare_penalty;
 		this.lastGdpIndex = this.pop > 0 ? output / this.pop : 0;
 		return output;
 	};
