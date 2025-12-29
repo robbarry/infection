@@ -166,7 +166,7 @@ function setup() {
 	}
 
 	for (let country of countries) {
-		country.initialize_partner_countries();
+		country.update_travel_weights();
 	}
 
 	// Patient zero in first country
@@ -274,6 +274,8 @@ function finalizeDailyMetrics() {
 
 	for (let country of countries) {
 		country.finalizeDay(infectious_days);
+		// Update travel weights based on new GDP data
+		country.update_travel_weights();
 	}
 
 	daily_interactions = 0;
@@ -460,12 +462,25 @@ function Country(id, pop, name, archetype = "moderate") {
 		}
 	};
 
-	this.initialize_partner_countries = function() {
+	this.update_travel_weights = function() {
+		this.country_pairs = [];
+		this.country_weights = [];
+		
 		for (let i = 0; i < country_count; i++) {
 			if (i != this.id) {
 				this.country_pairs.push(i);
-				let denominator = pow(p5.Vector.sub(this.pos, countries[i].pos).mag(), this.travel_prefer_local);
-				this.country_weights.push(1 / denominator);
+				let dist = p5.Vector.sub(this.pos, countries[i].pos).mag();
+				let denominator = pow(dist, this.travel_prefer_local);
+				
+				// GDP factor: Prefer countries with higher lastGdpIndex
+				// lastGdpIndex is ~0.2 to 1.0. Let's make it significant.
+				// If GDP is low, weight decreases.
+				// Base weight is 1 / denominator.
+				// New weight = (GDP^2) / denominator
+				let targetGdp = Math.max(0.1, countries[i].lastGdpIndex);
+				let gdpFactor = targetGdp * targetGdp; 
+				
+				this.country_weights.push(gdpFactor / denominator);
 			}
 		}
 	};
