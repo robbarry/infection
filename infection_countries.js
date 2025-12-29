@@ -485,6 +485,7 @@ function renderGDPGraph() {
 // Country class
 function Country(id, pop, name, archetype = "moderate") {
 	this.pop = pop;
+	this.original_pop = pop;
 	this.id = id;
 	this.name = name || COUNTRY_NAMES[id] || `Country ${id + 1}`;
 	this.populace = [];
@@ -494,6 +495,7 @@ function Country(id, pop, name, archetype = "moderate") {
 	this.flee_country_weights = [];
 	this.infected_count = 0;
 	this.infected_rate = 0;
+	this.deaths = 0;
 	this.travel_prob = travel_prob;
 	this.travel_speed = travel_speed;
 	this.non_travel_speed = non_travel_speed;
@@ -539,14 +541,16 @@ function Country(id, pop, name, archetype = "moderate") {
 		if (this.strategy === "static") return;
 
 		let rate_pct = this.infected_rate * 100;
+		// Also factor in "Death Momentum" - if people are dying, tighten up even if infected rate is low
+		let death_pct = (this.deaths / this.original_pop) * 100;
 		
 		if (this.strategy === "responsive") {
-			// Reacts to infection levels, tries to balance openness
-			if (rate_pct > 10) {
-				this.policy = new CountryPolicy("zeroCovid"); // Emergency break
-			} else if (rate_pct > 3) {
+			// Reacts to infection levels and deaths
+			if (rate_pct > 10 || death_pct > 5) {
+				this.policy = new CountryPolicy("zeroCovid");
+			} else if (rate_pct > 3 || death_pct > 2) {
 				this.policy = new CountryPolicy("strict");
-			} else if (rate_pct > 0.5) {
+			} else if (rate_pct > 0.5 || death_pct > 0.5) {
 				this.policy = new CountryPolicy("moderate");
 			} else {
 				this.policy = new CountryPolicy("open");
@@ -882,6 +886,7 @@ function Person(id, country) {
 					this.dead = true;
 					this.infected = 0;
 					this.country.pop--;
+					this.country.deaths++;
 					total_pop--;
 					total_deaths++;
 					return; // Stop processing for this person
@@ -1123,19 +1128,38 @@ function hidePolicyPanel() {
 }
 
 function renderLeaderboardHTML() {
-	let ranked = [...countries].sort((a, b) => b.gdp - a.gdp);
-	let html = '';
+	// Score = Cumulative GDP - (Penalty per death)
+	// Let's say one death costs 5000 GDP units (arbitrary but makes trade-off visible)
+	const DEATH_PENALTY = 5000;
+	
+	let ranked = [...countries].sort((a, b) => {
+		let scoreA = a.gdp - (a.deaths * DEATH_PENALTY);
+		let scoreB = b.gdp - (b.deaths * DEATH_PENALTY);
+		return scoreB - scoreA;
+	});
+
+	let html = `
+		<li class="leaderboard-item section-title" style="border-bottom: 1px solid #444; padding-bottom: 5px; margin-bottom: 8px;">
+			<span>Country</span>
+			<span>Output / Deaths</span>
+		</li>
+	`;
+
 	for (let i = 0; i < Math.min(12, ranked.length); i++) {
 		let c = ranked[i];
 		let color = c.policy.getColor();
 		let colorStr = `rgb(${color.join(',')})`;
 		html += `
 			<li class="leaderboard-item">
-				<span style="display:flex; align-items:center;">
+				<span style="display:flex; align-items:center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px;">
 					<span class="country-dot" style="background-color:${colorStr}"></span>
 					${i + 1}. ${c.name}
 				</span>
-				<span>${c.gdp.toFixed(0)}</span>
+				<span style="font-family: monospace;">
+					<span style="color: #4CAF50;">${c.gdp.toFixed(0)}</span>
+					<span style="color: #888;">/</span>
+					<span style="color: #F44336;">${c.deaths}</span>
+				</span>
 			</li>
 		`;
 	}
